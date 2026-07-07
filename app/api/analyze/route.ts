@@ -3,7 +3,8 @@ import { analyzeRequestSchema } from "../../../lib/validation/analyze-request";
 import { fetchPdf } from "../../../lib/pdf/fetch-pdf";
 import { analyzePdfWithGemini } from "../../../lib/providers/gemini";
 import { pdfAnalysisSchema } from "../../../lib/analysis/schema";
-
+import { mapErrorToResponse } from "../../../lib/errors/error-response";
+import { AppError } from "../../../lib/errors/app-error";
 
 /**
  * Helper to generate a unique request ID for tracing.
@@ -18,75 +19,34 @@ export async function POST(request: Request) {
   const requestId = generateRequestId();
 
   try {
-    // 1. Validate that the payload is JSON
+    // 1. Parse JSON payload
     let body: any;
     try {
       body = await request.json();
     } catch (err) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "INVALID_REQUEST",
-            message: "Malformed JSON payload in request body.",
-            requestId,
-          },
-        },
-        { status: 400 }
-      );
+      throw AppError.invalidRequest("Malformed JSON payload in request body.");
     }
 
-    // 2. Validate URL against Zod request schema
+    // 2. Validate URL against request schema
     const validationResult = analyzeRequestSchema.safeParse(body);
     if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "INVALID_URL",
-            message: validationResult.error.issues[0]?.message || "Please enter a valid HTTP or HTTPS URL.",
-            requestId,
-          },
-        },
-        { status: 400 }
-      );
+      throw validationResult.error; // Throws ZodError to be caught and mapped centrally
     }
 
     const { pdfUrl } = validationResult.data;
 
-    // 3. Fetch PDF and validate content type & HTTP status
-    let fetchResult;
-    try {
-      fetchResult = await fetchPdf(pdfUrl);
-    } catch (fetchError: any) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "FETCH_FAILED",
-            message: fetchError.message || "Failed to retrieve the PDF document.",
-            requestId,
-          },
-        },
-        { status: 400 } // Bad request for invalid target document/status
-      );
-    }
+    // 3. Fetch PDF (with SSRF, size limits, and signature checks)
+    const fetchResult = await fetchPdf(pdfUrl);
 
-    // 4. Analyze PDF with Gemini
-    let rawAnalysis;
+    // 4. Analyze PDF content with Gemini structured output
+    let rawAnalysis: any;
     try {
       rawAnalysis = await analyzePdfWithGemini(fetchResult.data);
     } catch (geminiError: any) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "ANALYSIS_FAILED",
-            message: geminiError.message || "Failed to analyze the document content.",
-            requestId,
-          },
-        },
-        { status: 502 } // Bad Gateway from Gemini API
-      );
+      throw AppError.analysisFailed(geminiError.message || "Failed to analyze the document content.");
     }
 
-    // 5. Inject server-side metadata and validate structure
+    // 5. Inject server-side metadata and validate target schema
     const analysisWithMetadata = {
       ...rawAnalysis,
       metadata: {
@@ -97,32 +57,16 @@ export async function POST(request: Request) {
 
     const finalValidation = pdfAnalysisSchema.safeParse(analysisWithMetadata);
     if (!finalValidation.success) {
-      console.error("Zod output validation failed:", finalValidation.error.format());
-      return NextResponse.json(
-        {
-          error: {
-            code: "INVALID_OUTPUT",
-            message: "The analysis model generated data that does not conform to the expected schema.",
-            requestId,
-          },
-        },
-        { status: 500 }
-      );
+      console.error("Schema validation failed for model output:", finalValidation.error.format());
+      throw AppError.internal("The analysis model generated data that does not conform to the expected schema.");
     }
 
+    // 6. Return successful response
     return NextResponse.json({
       data: finalValidation.data,
     });
-  } catch (globalError: any) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "INTERNAL_ERROR",
-          message: globalError.message || "An unexpected error occurred on the server.",
-          requestId,
-        },
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    // 7. Route all errors to centralized mapper
+    return mapErrorToResponse(error, requestId);
   }
 }

@@ -56,6 +56,7 @@ export default function Home() {
     setErrorMessage("");
 
     try {
+      console.log("Sending request to /api/analyze with URL:", url);
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
@@ -64,10 +65,14 @@ export default function Home() {
         body: JSON.stringify({ pdfUrl: url }),
       });
 
+      console.log("Response received. Status:", response.status, "OK:", response.ok);
       const payload = await response.json();
+      console.log("Response payload:", payload);
 
       if (!response.ok) {
-        setErrorMessage(payload.error?.message || "Failed to analyze the PDF document.");
+        const errorMsg = payload.error?.message || "Failed to analyze the PDF document.";
+        console.warn("API returned error:", errorMsg);
+        setErrorMessage(errorMsg);
         setState("ERROR");
         return;
       }
@@ -79,6 +84,7 @@ export default function Home() {
       const filename = url.split("/").pop() || "Document Analysis";
       setRecentAnalyses((prev) => [filename, ...prev.slice(0, 4)]);
     } catch (err: any) {
+      console.error("Error in handleUrlSubmit:", err);
       setErrorMessage(err.message || "An unexpected error occurred while communicating with the server.");
       setState("ERROR");
     }

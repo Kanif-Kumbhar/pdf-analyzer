@@ -1,4 +1,5 @@
 import { validateUrl } from "../security/validate-url";
+import { AppError } from "../errors/app-error";
 
 export interface FetchPdfResult {
   data: Buffer;
@@ -7,7 +8,8 @@ export interface FetchPdfResult {
 
 /**
  * Fetches a PDF file from a given URL with SSRF protections.
- * Performs URL parsing, protocol check, DNS validation, and manual redirect loop checks.
+ * Performs URL parsing, protocol check, DNS validation, manual redirect loop checks,
+ * content size restrictions, and PDF format verification.
  *
  * @param url The public HTTP or HTTPS URL pointing to the PDF document.
  * @param timeoutMs Request timeout limit in milliseconds. Defaults to 10 seconds.
@@ -37,12 +39,12 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
       if ([301, 302, 303, 307, 308].includes(status)) {
         redirectCount++;
         if (redirectCount > maxRedirects) {
-          throw new Error("Too many redirects (limit is 5).");
+          throw AppError.invalidRequest("Too many redirects (limit is 5).");
         }
 
         const location = response.headers.get("location");
         if (!location) {
-          throw new Error(`Redirect response (${status}) is missing its Location header.`);
+          throw AppError.invalidRequest(`Redirect response (${status}) is missing its Location header.`);
         }
 
         // Resolve relative redirects against the current URL
@@ -58,14 +60,21 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
 
     clearTimeout(id);
 
+    // Validate response HTTP status
     if (!response.ok) {
-      throw new Error(`Failed to fetch PDF (HTTP status ${response.status})`);
+      if (response.status === 404) {
+        throw AppError.pdfNotFound("Failed to fetch PDF (HTTP status 404).");
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw AppError.pdfInaccessible(`Failed to fetch PDF (HTTP status ${response.status}). Permission denied.`);
+      }
+      throw AppError.pdfInaccessible(`Failed to fetch PDF (HTTP status ${response.status}).`);
     }
 
     // Check Content-Type header
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.toLowerCase().includes("application/pdf")) {
-      throw new Error("Invalid content type. The URL must point to a PDF file.");
+      throw AppError.invalidPdf("Invalid content type. The URL must point to a PDF file.");
     }
 
     // Determine the max file size limit (default to 10MB)
@@ -77,13 +86,13 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
     if (contentLengthHeader) {
       const contentLength = parseInt(contentLengthHeader, 10);
       if (!isNaN(contentLength) && contentLength > maxFileSize) {
-        throw new Error("File size limit exceeded (maximum is 10MB).");
+        throw AppError.pdfTooLarge("File size limit exceeded (maximum is 10MB).");
       }
     }
 
     // Stream the body chunks and count actual bytes received
     if (!response.body) {
-      throw new Error("Response body is empty or unavailable.");
+      throw AppError.invalidPdf("Response body is empty or unavailable.");
     }
 
     const chunks: Uint8Array[] = [];
@@ -94,7 +103,7 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
     for await (const chunk of response.body as any) {
       totalBytes += chunk.byteLength;
       if (totalBytes > maxFileSize) {
-        throw new Error("File size limit exceeded (maximum is 10MB).");
+        throw AppError.pdfTooLarge("File size limit exceeded (maximum is 10MB).");
       }
 
       chunks.push(chunk);
@@ -104,7 +113,7 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
         const headerBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)), 5);
         const signature = headerBuffer.toString("ascii", 0, 5);
         if (signature !== "%PDF-") {
-          throw new Error("Invalid PDF signature. The file is not a valid PDF document.");
+          throw AppError.invalidPdf("Invalid PDF signature. The file is not a valid PDF document.");
         }
         checkedSignature = true;
       }
@@ -114,7 +123,7 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
     if (!checkedSignature) {
       const completeBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
       if (completeBuffer.length < 5 || completeBuffer.toString("ascii", 0, 5) !== "%PDF-") {
-        throw new Error("Invalid PDF signature. The file is not a valid PDF document.");
+        throw AppError.invalidPdf("Invalid PDF signature. The file is not a valid PDF document.");
       }
     }
 
@@ -128,7 +137,7 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
   } catch (error: any) {
     clearTimeout(id);
     if (error.name === "AbortError") {
-      throw new Error("Request timed out while fetching the PDF document.");
+      throw AppError.pdfFetchTimeout("Request timed out while fetching the PDF document.");
     }
     throw error;
   }
