@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { analyzeRequestSchema } from "../../../lib/validation/analyze-request";
 import { fetchPdf } from "../../../lib/pdf/fetch-pdf";
+import { analyzePdfWithGemini } from "../../../lib/providers/gemini";
+import { pdfAnalysisSchema } from "../../../lib/analysis/schema";
+
 
 /**
  * Helper to generate a unique request ID for tracing.
@@ -50,14 +53,9 @@ export async function POST(request: Request) {
     const { pdfUrl } = validationResult.data;
 
     // 3. Fetch PDF and validate content type & HTTP status
+    let fetchResult;
     try {
-      const fetchResult = await fetchPdf(pdfUrl);
-      
-      // 4. Return temporary success response containing size
-      return NextResponse.json({
-        success: true,
-        size: fetchResult.size,
-      });
+      fetchResult = await fetchPdf(pdfUrl);
     } catch (fetchError: any) {
       return NextResponse.json(
         {
@@ -70,6 +68,51 @@ export async function POST(request: Request) {
         { status: 400 } // Bad request for invalid target document/status
       );
     }
+
+    // 4. Analyze PDF with Gemini
+    let rawAnalysis;
+    try {
+      rawAnalysis = await analyzePdfWithGemini(fetchResult.data);
+    } catch (geminiError: any) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "ANALYSIS_FAILED",
+            message: geminiError.message || "Failed to analyze the document content.",
+            requestId,
+          },
+        },
+        { status: 502 } // Bad Gateway from Gemini API
+      );
+    }
+
+    // 5. Inject server-side metadata and validate structure
+    const analysisWithMetadata = {
+      ...rawAnalysis,
+      metadata: {
+        ...rawAnalysis?.metadata,
+        analyzedAt: new Date().toISOString(),
+      },
+    };
+
+    const finalValidation = pdfAnalysisSchema.safeParse(analysisWithMetadata);
+    if (!finalValidation.success) {
+      console.error("Zod output validation failed:", finalValidation.error.format());
+      return NextResponse.json(
+        {
+          error: {
+            code: "INVALID_OUTPUT",
+            message: "The analysis model generated data that does not conform to the expected schema.",
+            requestId,
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      data: finalValidation.data,
+    });
   } catch (globalError: any) {
     return NextResponse.json(
       {

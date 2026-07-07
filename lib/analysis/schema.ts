@@ -16,8 +16,8 @@ export const pdfAnalysisSchema = z.object({
   complexityLevel: z.string().min(1, "Complexity level is required"),
   language: z.string().min(1, "Language is required"),
   metadata: z.object({
-    pageCount: z.number().int().nonnegative("Page count must be a non-negative integer"),
-    estimatedReadingMinutes: z.number().int().nonnegative("Estimated reading minutes must be a non-negative integer"),
+    pageCount: z.number().int().nonnegative().default(0),
+    estimatedReadingMinutes: z.number().int().nonnegative().default(0),
     analyzedAt: z.string().min(1, "Analyzed timestamp is required"),
   }),
 });

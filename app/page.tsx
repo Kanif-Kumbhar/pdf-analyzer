@@ -40,8 +40,10 @@ export default function Home() {
     "Future of LLMs",
     "Climate Change Analysis Report 2024",
   ]);
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
 
-  const handleUrlSubmit = (url: string) => {
+
+  const handleUrlSubmit = async (url: string) => {
     // Validate the URL using the Zod schema contract
     const result = analyzeRequestSchema.safeParse({ pdfUrl: url });
     if (!result.success) {
@@ -53,17 +55,33 @@ export default function Home() {
     setState("LOADING");
     setErrorMessage("");
 
-    setTimeout(() => {
-      if (url.toLowerCase().includes("error")) {
-        setErrorMessage("Could not parse the PDF file from the provided URL. Please verify the link is valid and accessible.");
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pdfUrl: url }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setErrorMessage(payload.error?.message || "Failed to analyze the PDF document.");
         setState("ERROR");
-      } else {
-        setState("SUCCESS");
-        // Add to recent analyses
-        const filename = url.split("/").pop() || "Document Analysis";
-        setRecentAnalyses((prev) => [filename, ...prev.slice(0, 4)]);
+        return;
       }
-    }, 1500);
+
+      setAnalysisData(payload.data);
+      setState("SUCCESS");
+
+      // Add to recent analyses
+      const filename = url.split("/").pop() || "Document Analysis";
+      setRecentAnalyses((prev) => [filename, ...prev.slice(0, 4)]);
+    } catch (err: any) {
+      setErrorMessage(err.message || "An unexpected error occurred while communicating with the server.");
+      setState("ERROR");
+    }
   };
 
   const handleRetry = () => {
@@ -153,7 +171,7 @@ export default function Home() {
 
           {state === "LOADING" && <AnalysisSkeleton />}
 
-          {state === "SUCCESS" && <AnalysisResult data={mockAnalysis} />}
+          {state === "SUCCESS" && <AnalysisResult data={analysisData || mockAnalysis} />}
 
           {state === "ERROR" && (
             <AnalysisError
