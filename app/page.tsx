@@ -5,6 +5,8 @@ import UrlForm from "../components/analyzer/url-form";
 import AnalysisResult, { AnalysisData } from "../components/analyzer/analysis-result";
 import AnalysisSkeleton from "../components/analyzer/analysis-skeleton";
 import AnalysisError from "../components/analyzer/analysis-error";
+import { analyzeRequestSchema } from "../lib/validation/analyze-request";
+
 
 type VisualState = "IDLE" | "LOADING" | "SUCCESS" | "ERROR";
 
@@ -40,6 +42,14 @@ export default function Home() {
   ]);
 
   const handleUrlSubmit = (url: string) => {
+    // Validate the URL using the Zod schema contract
+    const result = analyzeRequestSchema.safeParse({ pdfUrl: url });
+    if (!result.success) {
+      setErrorMessage(result.error.issues[0]?.message || "Invalid URL");
+      setState("ERROR");
+      return;
+    }
+
     setState("LOADING");
     setErrorMessage("");
 
@@ -85,33 +95,6 @@ export default function Home() {
               API
             </a>
           </nav>
-          
-          {/* State selector widget for interview demonstrations */}
-          <div className="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/20">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider hidden sm:inline">
-              Demo State:
-            </span>
-            <div className="flex gap-1">
-              {(["IDLE", "LOADING", "SUCCESS", "ERROR"] as VisualState[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setState(s);
-                    if (s === "ERROR") {
-                      setErrorMessage("Mock error: Failed to retrieve document. Request timed out.");
-                    }
-                  }}
-                  className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-all cursor-pointer ${
-                    state === s
-                      ? "bg-primary text-white shadow-sm"
-                      : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </header>
 

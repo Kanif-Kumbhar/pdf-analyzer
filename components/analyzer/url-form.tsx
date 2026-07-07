@@ -20,7 +20,7 @@ export default function UrlForm({ onSubmit, isLoading }: UrlFormProps) {
   return (
     <form onSubmit={handleSubmit} className="flex w-full gap-3">
       <input
-        type="url"
+        type="text"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         placeholder="Paste PDF URL here"

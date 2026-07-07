@@ -49,3 +49,4 @@ CLAUDE.md
 .vscode/
 .idea/
 
+*.txt
