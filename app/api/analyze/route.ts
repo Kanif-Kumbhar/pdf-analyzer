@@ -3,6 +3,8 @@ import { analyzeRequestSchema } from "../../../lib/validation/analyze-request";
 import { fetchPdf } from "../../../lib/pdf/fetch-pdf";
 import { analyzePdfWithGemini } from "../../../lib/providers/gemini";
 import { pdfAnalysisSchema } from "../../../lib/analysis/schema";
+import { extractPdfMetadata } from "../../../lib/pdf/metadata";
+import { estimateReadingMinutes } from "../../../lib/analysis/reading-time";
 import { mapErrorToResponse } from "../../../lib/errors/error-response";
 import { AppError } from "../../../lib/errors/app-error";
 import { getCachedAnalysis, setCachedAnalysis } from "../../../lib/db/analysis-cache";
@@ -55,19 +57,34 @@ export async function POST(request: Request) {
     // 5. Fetch PDF (with SSRF, size limits, and signature checks)
     const fetchResult = await fetchPdf(pdfUrl);
 
-    // 6. Analyze PDF content with Gemini structured output
+    // 6. Run Gemini analysis and deterministic metadata extraction in parallel
     let rawAnalysis: any;
+    let pdfMeta: Awaited<ReturnType<typeof extractPdfMetadata>>;
+
     try {
-      rawAnalysis = await analyzePdfWithGemini(fetchResult.data);
+      [rawAnalysis, pdfMeta] = await Promise.all([
+        analyzePdfWithGemini(fetchResult.data),
+        extractPdfMetadata(fetchResult.data),
+      ]);
     } catch (geminiError: any) {
       throw AppError.analysisFailed(geminiError.message || "Failed to analyze the document content.");
     }
 
-    // 7. Inject server-side metadata and validate target schema
+    const readingMinutes = estimateReadingMinutes(pdfMeta.wordCount, pdfMeta.pageCount);
+
+    console.log(
+      `[Metadata] pages=${pdfMeta.pageCount ?? "unknown"} ` +
+      `words=${pdfMeta.wordCount ?? "unknown"} ` +
+      `reading=${readingMinutes ?? "unknown"}min`
+    );
+
+    // 7. Merge deterministic metadata over Gemini's output, then validate schema
     const analysisWithMetadata = {
       ...rawAnalysis,
       metadata: {
-        ...rawAnalysis?.metadata,
+        // Deterministic values override Gemini's guesses; fall back to Gemini or 0
+        pageCount: pdfMeta.pageCount ?? rawAnalysis?.metadata?.pageCount ?? 0,
+        estimatedReadingMinutes: readingMinutes ?? rawAnalysis?.metadata?.estimatedReadingMinutes ?? 0,
         analyzedAt: new Date().toISOString(),
       },
     };
