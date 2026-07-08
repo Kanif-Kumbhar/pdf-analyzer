@@ -71,9 +71,33 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
       throw AppError.pdfInaccessible(`Failed to fetch PDF (HTTP status ${response.status}).`);
     }
 
-    // Check Content-Type header
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.toLowerCase().includes("application/pdf")) {
+    // Check Content-Type header.
+    // Accept application/pdf directly, or generic binary types (application/octet-stream,
+    // application/binary) used by Google Drive, GitHub raw links, and many CDNs.
+    // The actual file format is always verified by the %PDF- magic signature check below.
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const isAcceptableContentType =
+      contentType.includes("application/pdf") ||
+      contentType.includes("application/octet-stream") ||
+      contentType.includes("application/binary") ||
+      contentType.includes("application/force-download") ||
+      contentType.includes("application/download");
+
+    if (!isAcceptableContentType) {
+      // If the final URL landed on a known auth/login domain, the file is private —
+      // show access denied rather than "invalid content type".
+      const finalHost = currentUrl.toString().toLowerCase();
+      const isGoogleAuthPage =
+        finalHost.includes("accounts.google.com") ||
+        finalHost.includes("drive.usercontent.google.com") ||
+        (finalHost.includes("drive.google.com") && contentType.includes("text/html"));
+
+      if (isGoogleAuthPage) {
+        throw AppError.pdfInaccessible(
+          "Access denied. The Google Drive file is private. Please share it with 'Anyone with the link' and try again."
+        );
+      }
+
       throw AppError.invalidPdf("Invalid content type. The URL must point to a PDF file.");
     }
 

@@ -5,6 +5,8 @@ import { analyzePdfWithGemini } from "../../../lib/providers/gemini";
 import { pdfAnalysisSchema } from "../../../lib/analysis/schema";
 import { mapErrorToResponse } from "../../../lib/errors/error-response";
 import { AppError } from "../../../lib/errors/app-error";
+import { getCachedAnalysis, setCachedAnalysis } from "../../../lib/db/analysis-cache";
+import { transformUrl } from "../../../lib/url/transform-url";
 
 /**
  * Helper to generate a unique request ID for tracing.
@@ -30,15 +32,30 @@ export async function POST(request: Request) {
     // 2. Validate URL against request schema
     const validationResult = analyzeRequestSchema.safeParse(body);
     if (!validationResult.success) {
-      throw validationResult.error; // Throws ZodError to be caught and mapped centrally
+      throw validationResult.error;
     }
 
-    const { pdfUrl } = validationResult.data;
+    const { pdfUrl: rawPdfUrl } = validationResult.data;
 
-    // 3. Fetch PDF (with SSRF, size limits, and signature checks)
+    // 3. Normalize known share/viewer URLs (e.g. Google Drive) to direct download URLs
+    const { url: pdfUrl, transformed, source } = transformUrl(rawPdfUrl);
+    if (transformed) {
+      console.log(`[URL] Transformed ${source} link for direct download.`);
+    }
+
+    // 4. Cache lookup — skip Gemini on a hit
+    const cacheResult = await getCachedAnalysis(pdfUrl);
+    if (cacheResult.hit) {
+      return NextResponse.json({
+        data: cacheResult.data,
+        cached: true,
+      });
+    }
+
+    // 5. Fetch PDF (with SSRF, size limits, and signature checks)
     const fetchResult = await fetchPdf(pdfUrl);
 
-    // 4. Analyze PDF content with Gemini structured output
+    // 6. Analyze PDF content with Gemini structured output
     let rawAnalysis: any;
     try {
       rawAnalysis = await analyzePdfWithGemini(fetchResult.data);
@@ -46,7 +63,7 @@ export async function POST(request: Request) {
       throw AppError.analysisFailed(geminiError.message || "Failed to analyze the document content.");
     }
 
-    // 5. Inject server-side metadata and validate target schema
+    // 7. Inject server-side metadata and validate target schema
     const analysisWithMetadata = {
       ...rawAnalysis,
       metadata: {
@@ -61,12 +78,15 @@ export async function POST(request: Request) {
       throw AppError.internal("The analysis model generated data that does not conform to the expected schema.");
     }
 
-    // 6. Return successful response
+    // 8. Store result in cache — awaited to ensure response stream is flushed correctly
+    await setCachedAnalysis(pdfUrl, finalValidation.data);
+
+    // 8. Return fresh response
     return NextResponse.json({
       data: finalValidation.data,
+      cached: false,
     });
   } catch (error) {
-    // 7. Route all errors to centralized mapper
     return mapErrorToResponse(error, requestId);
   }
 }
