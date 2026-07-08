@@ -20,12 +20,22 @@ export interface PdfMetadata {
 function extractTextFromStream(data: string): string {
   let text = "";
 
+  // Unescape common PDF string escapes so word boundaries are clean
+  const unescape = (s: string) =>
+    s
+      .replace(/\\n/g, " ")
+      .replace(/\\r/g, " ")
+      .replace(/\\t/g, " ")
+      .replace(/\\\(/g, "(")
+      .replace(/\\\)/g, ")")
+      .replace(/\\\\/g, "\\");
+
   // (text) Tj  — show string
   // (text) '   — move to next line and show string
   const tjRe = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|'|")/g;
   let m: RegExpExecArray | null;
   while ((m = tjRe.exec(data)) !== null) {
-    text += " " + m[1];
+    text += " " + unescape(m[1]);
   }
 
   // [(text) spacing ...] TJ  — show string with individual glyph positioning
@@ -34,7 +44,7 @@ function extractTextFromStream(data: string): string {
     const innerRe = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
     let im: RegExpExecArray | null;
     while ((im = innerRe.exec(m[1])) !== null) {
-      text += " " + im[1];
+      text += " " + unescape(im[1]);
     }
   }
 
@@ -63,7 +73,6 @@ export async function extractPdfMetadata(buffer: Buffer): Promise<PdfMetadata> {
     let extractedText = "";
 
     // Match each PDF object that has a stream body.
-    // We capture the dictionary and the stream bytes.
     const streamRe =
       /<<([\s\S]{1,2000}?)>>\s*stream\r?\n([\s\S]*?)\r?\nendstream/g;
     let match: RegExpExecArray | null;
@@ -72,32 +81,56 @@ export async function extractPdfMetadata(buffer: Buffer): Promise<PdfMetadata> {
       const dictStr = match[1];
       const streamBytes = match[2];
 
-      // Only process FlateDecode (deflate-compressed) streams.
-      // Other filters (LZW, ASCII85, JBIG2, etc.) are uncommon for text streams.
-      if (
-        !dictStr.includes("/FlateDecode") &&
-        !dictStr.includes("/Fl ")
-      ) {
-        continue;
-      }
+      const isFlateDecode =
+        dictStr.includes("/FlateDecode") || dictStr.includes("/Fl ");
 
-      try {
-        const compressed = Buffer.from(streamBytes, "latin1");
-        const decompressed = await inflateAsync(compressed);
-        extractedText += extractTextFromStream(decompressed.toString("latin1"));
-      } catch {
-        // Skip streams that fail to decompress (e.g. corrupt data, wrong filter)
+      // Skip streams that are definitely not text (images, fonts, etc.)
+      const isImageStream =
+        dictStr.includes("/DCTDecode") ||
+        dictStr.includes("/JPXDecode") ||
+        dictStr.includes("/CCITTFaxDecode") ||
+        dictStr.includes("/JBIG2Decode") ||
+        dictStr.includes("/Subtype /Image");
+
+      if (isImageStream) continue;
+
+      if (isFlateDecode) {
+        try {
+          const compressed = Buffer.from(streamBytes, "latin1");
+          const decompressed = await inflateAsync(compressed);
+          extractedText += extractTextFromStream(decompressed.toString("latin1"));
+        } catch {
+          // Skip streams that fail to decompress
+        }
+      } else {
+        // Try uncompressed streams directly — many PDFs use no filter for content
+        const uncompressedText = extractTextFromStream(streamBytes);
+        if (uncompressedText.trim().length > 0) {
+          extractedText += uncompressedText;
+        }
       }
     }
 
-    // Count words: split on whitespace, keep only tokens with ≥ 2 characters
-    // to filter out PDF operator noise like "BT", "ET", "q", "Q".
-    const wordCount = extractedText.trim()
+    // Count words: split on whitespace, keep only tokens with ≥ 2 real characters
+    const rawWordCount = extractedText.trim()
       ? extractedText
           .trim()
           .split(/\s+/)
           .filter((w) => w.replace(/[^a-zA-Z0-9]/g, "").length >= 2).length
       : null;
+
+    // Plausibility check: if the extraction yields fewer than 200 words per page,
+    // the stream text is likely garbled or incomplete (custom glyph encodings,
+    // partially compressed streams, etc.). Return null to trigger the more reliable
+    // page-count fallback in estimateReadingMinutes().
+    const MIN_WORDS_PER_PAGE = 200;
+    const wordCount =
+      rawWordCount !== null &&
+      pageCount !== null &&
+      rawWordCount >= pageCount * MIN_WORDS_PER_PAGE
+        ? rawWordCount
+        : null; // null triggers page-count fallback in estimateReadingMinutes
+
 
     return { pageCount, wordCount };
   } catch {

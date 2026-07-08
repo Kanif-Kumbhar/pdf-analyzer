@@ -8,7 +8,15 @@ export type LogStage =
   | "analysis_started"
   | "analysis_completed"
   | "request_completed"
-  | "request_failed";
+  | "request_failed"
+  // upload-specific stages
+  | "upload_request_received"
+  | "upload_validated"
+  | "upload_cache_hit"
+  | "upload_cache_miss"
+  | "upload_analysis_completed"
+  | "upload_request_completed"
+  | "upload_request_failed";
 
 interface LogPayload {
   requestId: string;

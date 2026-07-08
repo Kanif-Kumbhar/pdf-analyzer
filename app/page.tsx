@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import UrlForm from "../components/analyzer/url-form";
+import DropZone from "../components/analyzer/drop-zone";
 import AnalysisResult, { AnalysisData } from "../components/analyzer/analysis-result";
 import AnalysisSkeleton from "../components/analyzer/analysis-skeleton";
 import AnalysisError from "../components/analyzer/analysis-error";
@@ -39,6 +40,7 @@ export default function Home() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState("");
+  const [inputTab, setInputTab] = useState<"url" | "upload">("url");
   
   interface HistoryItem {
     url: string;
@@ -146,11 +148,99 @@ export default function Home() {
     }
   };
 
+  const handleFileUpload = async (file: File) => {
+    setState("LOADING");
+    setErrorMessage("");
+    setErrorCode(null);
+    setErrorRequestId(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/analyze/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = payload.error?.message || "Failed to analyze the PDF document.";
+        const code = payload.error?.code || "INTERNAL_ERROR";
+        const reqId = payload.error?.requestId || null;
+        setErrorMessage(errorMsg);
+        setErrorCode(code);
+        setErrorRequestId(reqId);
+        setState("ERROR");
+        return;
+      }
+
+      setAnalysisData(payload.data);
+      setState("SUCCESS");
+      fetchHistory(1);
+    } catch (err: any) {
+      console.error("Error in handleFileUpload:", err);
+      setErrorMessage(err.message || "An unexpected error occurred.");
+      setErrorCode("CLIENT_FETCH_ERROR");
+      setErrorRequestId(null);
+      setState("ERROR");
+    } finally {
+      updateRateLimit();
+    }
+  };
+
   const handleRetry = () => {
     setState("IDLE");
     setErrorMessage("");
     setErrorCode(null);
     setErrorRequestId(null);
+  };
+
+  /** Loads a cached analysis result by content hash (for uploaded-file history items). */
+  const handleCachedResult = async (hash: string) => {
+    setState("LOADING");
+    setErrorMessage("");
+    setErrorCode(null);
+    setErrorRequestId(null);
+
+    try {
+      const response = await fetch(`/api/analyze/cached?hash=${hash}`);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = payload.error?.message || "Could not load the cached result.";
+        setErrorMessage(errorMsg);
+        setErrorCode(payload.error?.code || "NOT_FOUND");
+        setErrorRequestId(null);
+        setState("ERROR");
+        return;
+      }
+
+      setAnalysisData(payload.data);
+      setState("SUCCESS");
+    } catch (err: any) {
+      setErrorMessage(err.message || "An unexpected error occurred.");
+      setErrorCode("CLIENT_FETCH_ERROR");
+      setErrorRequestId(null);
+      setState("ERROR");
+    }
+  };
+
+  /**
+   * Handles a click on a history item.
+   * Upload items (url starts with "upload::") fetch from the cache by hash.
+   * URL items go through the normal URL submit flow.
+   */
+  const handleHistoryItemClick = (url: string) => {
+    if (url.startsWith("upload::")) {
+      const hash = url.replace("upload::", "");
+      handleCachedResult(hash);
+    } else {
+      setInputTab("url");
+      setUrlInput(url);
+      handleUrlSubmit(url);
+    }
   };
 
   return (
@@ -192,9 +282,49 @@ export default function Home() {
             Extract summaries, key takeaways, and structural metadata from any document URL.
           </p>
           
-          <div className="w-full mt-4">
-            <UrlForm onSubmit={handleUrlSubmit} isLoading={state === "LOADING"} value={urlInput} onChange={setUrlInput} />
-            
+          <div className="w-full mt-4 flex flex-col gap-3">
+            {/* Tab switcher */}
+            <div className="flex rounded-lg border border-outline-variant/40 overflow-hidden w-full">
+              <button
+                onClick={() => setInputTab("url")}
+                disabled={state === "LOADING"}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors ${
+                  inputTab === "url"
+                    ? "bg-primary text-on-primary"
+                    : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                } disabled:opacity-60`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                  strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                </svg>
+                URL
+              </button>
+              <button
+                onClick={() => setInputTab("upload")}
+                disabled={state === "LOADING"}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-semibold transition-colors ${
+                  inputTab === "upload"
+                    ? "bg-primary text-on-primary"
+                    : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                } disabled:opacity-60`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                  strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                Upload PDF
+              </button>
+            </div>
+
+            {inputTab === "url" ? (
+              <UrlForm onSubmit={handleUrlSubmit} isLoading={state === "LOADING"} value={urlInput} onChange={setUrlInput} />
+            ) : (
+              <DropZone onFileSelect={handleFileUpload} isLoading={state === "LOADING"} />
+            )}
+
             {state === "IDLE" && (
               <p className="text-xs text-on-surface-variant/75 mt-3">
                 Try pasting any PDF link, or type <code className="bg-surface-container px-1 py-0.5 rounded font-mono font-semibold">error</code> to simulate a failed request.
@@ -260,47 +390,53 @@ export default function Home() {
               </div>
             ) : (
               <>
-                {historyItems.map((item, idx) => (
-                  <a
-                    key={idx}
-                    className="flex items-center justify-between p-4 border-b last:border-0 border-outline-variant/20 hover:bg-surface-container-low transition-colors group"
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleUrlSubmit(item.url);
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className="w-5 h-5 text-outline group-hover:text-primary transition-colors"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-                        />
-                      </svg>
-                      <span className="font-body-md text-body-md text-on-surface font-medium truncate max-w-lg sm:max-w-xl md:max-w-2xl">
-                        {item.title}
-                      </span>
-                    </div>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                      className="w-4 h-4 text-outline-variant"
+                {historyItems.map((item, idx) => {
+                  const isUpload = item.url.startsWith("upload::");
+                  return (
+                    <a
+                      key={idx}
+                      className="flex items-center justify-between p-4 border-b last:border-0 border-outline-variant/20 hover:bg-surface-container-low transition-colors group"
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleHistoryItemClick(item.url);
+                      }}
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                    </svg>
-                  </a>
-                ))}
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isUpload ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            strokeWidth={1.5} stroke="currentColor"
+                            className="w-5 h-5 shrink-0 text-outline group-hover:text-primary transition-colors">
+                            <path strokeLinecap="round" strokeLinejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                            strokeWidth={1.5} stroke="currentColor"
+                            className="w-5 h-5 shrink-0 text-outline group-hover:text-primary transition-colors">
+                            <path strokeLinecap="round" strokeLinejoin="round"
+                              d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                          </svg>
+                        )}
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-body-md text-body-md text-on-surface font-medium truncate max-w-lg sm:max-w-xl md:max-w-2xl">
+                            {item.title}
+                          </span>
+                          {isUpload && (
+                            <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wider mt-0.5">
+                              Uploaded file
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                        strokeWidth={2} stroke="currentColor"
+                        className="w-4 h-4 shrink-0 text-outline-variant">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </a>
+                  );
+                })}
                 
                 {/* Pagination Controls */}
                 {historyTotal > 3 && (
