@@ -1,11 +1,46 @@
 import React from "react";
 
 interface AnalysisErrorProps {
+  code?: string | null;
   message: string;
+  requestId?: string | null;
   onRetry?: () => void;
 }
 
-export default function AnalysisError({ message, onRetry }: AnalysisErrorProps) {
+export default function AnalysisError({ code, message, requestId, onRetry }: AnalysisErrorProps) {
+  // Determine if this is a backend service / configuration / generic system error
+  const isSystemError =
+    code === "SERVICE_CONFIGURATION_ERROR" ||
+    code === "INTERNAL_ERROR" ||
+    code === "ANALYSIS_FAILED" ||
+    code === "CLIENT_FETCH_ERROR";
+
+  const isRateLimit = code === "RATE_LIMIT_EXCEEDED" || code === "SERVICE_BUSY";
+
+  let title = "Analysis Failed";
+  let displayMessage = message;
+
+  // Map display fields based on error type
+  if (isSystemError) {
+    title = "Analysis Service Unavailable";
+    
+    // Mask sensitive configurations if they slip into development messages
+    const containsSecrets = 
+      message.includes("API_KEY") || 
+      message.includes("secret") || 
+      message.includes("token") || 
+      message.includes(".env");
+      
+    if (containsSecrets) {
+      displayMessage = "We couldn't analyze your document because the analysis service is currently unavailable. Please try again later.";
+    } else {
+      displayMessage = message;
+    }
+  } else if (isRateLimit) {
+    title = "Rate Limit Exceeded";
+    displayMessage = message || "Too many analysis requests. Please wait a few minutes.";
+  }
+
   return (
     <div className="w-full max-w-4xl bg-surface-container-lowest border border-outline-variant/30 rounded-[20px] shadow-card p-8 sm:p-12 flex flex-col items-center text-center transition-all duration-300 relative overflow-hidden">
       {/* Background radial glow */}
@@ -47,50 +82,59 @@ export default function AnalysisError({ message, onRetry }: AnalysisErrorProps) 
 
       {/* Main Content */}
       <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-on-surface mb-3 tracking-tight">
-        Analysis Failed
+        {title}
       </h3>
       
-      <p className="font-body-lg text-body-lg text-on-surface-variant max-w-xl leading-relaxed">
-        {message}
+      <p className="font-body-lg text-body-lg text-on-surface-variant max-w-xl leading-relaxed whitespace-pre-wrap">
+        {displayMessage}
       </p>
 
-      {/* Troubleshooting card */}
-      <div className="w-full max-w-xl bg-surface-container-low/40 border border-outline-variant/20 rounded-[16px] p-5 my-8 text-left backdrop-blur-sm">
-        <h4 className="font-label-md text-[13px] font-bold text-on-surface uppercase tracking-wider mb-4 flex items-center gap-2">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-            className="w-4 h-4 text-error"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-            />
-          </svg>
-          Verification Checklist
-        </h4>
-        <ul className="space-y-3">
-          <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
-            <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
-            <span>Verify the URL points directly to a valid PDF document (usually ends in <code className="font-mono bg-surface-container-high px-1 py-0.5 rounded text-xs font-semibold">.pdf</code>).</span>
-          </li>
-          <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
-            <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
-            <span>Check that the URL is public and does not require credentials, cookies, or captcha to access.</span>
-          </li>
-          <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
-            <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
-            <span>Ensure the host server permits automated requests (no anti-bot shields like Cloudflare blockages).</span>
-          </li>
-        </ul>
-      </div>
+      {/* Request ID badge */}
+      {requestId && (
+        <p className="text-xs text-on-surface-variant/80 mt-4 font-mono">
+          Request ID: <code className="bg-surface-container px-2 py-0.5 rounded border border-outline-variant/30 font-semibold">{requestId}</code>
+        </p>
+      )}
+
+      {/* Troubleshooting Checklist — Only show for user action required inputs */}
+      {!isSystemError && !isRateLimit && (
+        <div className="w-full max-w-xl bg-surface-container-low/40 border border-outline-variant/20 rounded-[16px] p-5 my-8 text-left backdrop-blur-sm">
+          <h4 className="font-label-md text-[13px] font-bold text-on-surface uppercase tracking-wider mb-4 flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-4 h-4 text-error"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+              />
+            </svg>
+            Verification Checklist
+          </h4>
+          <ul className="space-y-3">
+            <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
+              <span>Verify the URL points directly to a valid PDF document (usually ends in <code className="font-mono bg-surface-container-high px-1 py-0.5 rounded text-xs font-semibold">.pdf</code>).</span>
+            </li>
+            <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
+              <span>Check that the URL is public and does not require credentials, cookies, or captcha to access.</span>
+            </li>
+            <li className="flex items-start gap-3 text-[13px] sm:text-sm text-on-surface-variant leading-relaxed">
+              <span className="w-1.5 h-1.5 rounded-full bg-error mt-2 shrink-0"></span>
+              <span>Ensure the host server permits automated requests (no anti-bot shields like Cloudflare blockages).</span>
+            </li>
+          </ul>
+        </div>
+      )}
 
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className={`flex flex-col sm:flex-row items-center gap-3 ${isSystemError || isRateLimit ? "mt-8" : ""}`}>
         {onRetry && (
           <button
             onClick={onRetry}

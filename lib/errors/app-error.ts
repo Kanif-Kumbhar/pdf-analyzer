@@ -50,6 +50,10 @@ export class AppError extends Error {
     return new AppError("SERVICE_BUSY", 429, message);
   }
 
+  static rateLimitExceeded(message: string) {
+    return new AppError("RATE_LIMIT_EXCEEDED", 429, message);
+  }
+
   static analysisTimeout(message: string) {
     return new AppError("ANALYSIS_TIMEOUT", 504, message);
   }

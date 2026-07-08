@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import UrlForm from "../components/analyzer/url-form";
 import AnalysisResult, { AnalysisData } from "../components/analyzer/analysis-result";
 import AnalysisSkeleton from "../components/analyzer/analysis-skeleton";
@@ -36,11 +36,33 @@ const mockAnalysis: AnalysisData = {
 export default function Home() {
   const [state, setState] = useState<VisualState>("IDLE");
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
   const [recentAnalyses, setRecentAnalyses] = useState<string[]>([
     "Future of LLMs",
     "Climate Change Analysis Report 2024",
   ]);
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
+  const [analysisRemaining, setAnalysisRemaining] = useState<number | null>(null);
+  const [analysisMax, setAnalysisMax] = useState<number>(10);
+
+  // Fetch the rate limit status for the client IP
+  const updateRateLimit = async () => {
+    try {
+      const response = await fetch("/api/limit");
+      if (response.ok) {
+        const payload = await response.json();
+        setAnalysisRemaining(payload.analysisRemaining);
+        setAnalysisMax(payload.analysisMax);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch rate limit status:", err);
+    }
+  };
+
+  useEffect(() => {
+    updateRateLimit();
+  }, []);
 
 
   const handleUrlSubmit = async (url: string) => {
@@ -48,12 +70,16 @@ export default function Home() {
     const result = analyzeRequestSchema.safeParse({ pdfUrl: url });
     if (!result.success) {
       setErrorMessage(result.error.issues[0]?.message || "Invalid URL");
+      setErrorCode("INVALID_URL");
+      setErrorRequestId(null);
       setState("ERROR");
       return;
     }
 
     setState("LOADING");
     setErrorMessage("");
+    setErrorCode(null);
+    setErrorRequestId(null);
 
     try {
       console.log("Sending request to /api/analyze with URL:", url);
@@ -71,8 +97,12 @@ export default function Home() {
 
       if (!response.ok) {
         const errorMsg = payload.error?.message || "Failed to analyze the PDF document.";
-        console.warn("API returned error:", errorMsg);
+        const code = payload.error?.code || "INTERNAL_ERROR";
+        const reqId = payload.error?.requestId || null;
+        console.warn("API returned error:", errorMsg, "Code:", code, "RequestId:", reqId);
         setErrorMessage(errorMsg);
+        setErrorCode(code);
+        setErrorRequestId(reqId);
         setState("ERROR");
         return;
       }
@@ -86,13 +116,20 @@ export default function Home() {
     } catch (err: any) {
       console.error("Error in handleUrlSubmit:", err);
       setErrorMessage(err.message || "An unexpected error occurred while communicating with the server.");
+      setErrorCode("CLIENT_FETCH_ERROR");
+      setErrorRequestId(null);
       setState("ERROR");
+    } finally {
+      // Refresh the rate limit status dynamically
+      updateRateLimit();
     }
   };
 
   const handleRetry = () => {
     setState("IDLE");
     setErrorMessage("");
+    setErrorCode(null);
+    setErrorRequestId(null);
   };
 
   return (
@@ -108,17 +145,18 @@ export default function Home() {
               Pro
             </span>
           </div>
-          <nav className="hidden md:flex gap-6">
-            <a className="text-primary font-semibold border-b-2 border-primary pb-1" href="#">
-              Dashboard
-            </a>
-            <a className="text-on-surface-variant hover:text-primary transition-colors" href="#">
-              History
-            </a>
-            <a className="text-on-surface-variant hover:text-primary transition-colors" href="#">
-              API
-            </a>
-          </nav>
+          <div className="flex gap-4 items-center">
+            {analysisRemaining !== null && (
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
+                analysisRemaining <= 2 
+                  ? "bg-error-container text-on-error-container border-error/20 animate-pulse" 
+                  : "bg-primary/5 text-primary border-primary/20"
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${analysisRemaining <= 2 ? "bg-error" : "bg-primary"}`}></span>
+                AI Analyses Remaining: {analysisRemaining} / {analysisMax}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -181,7 +219,9 @@ export default function Home() {
 
           {state === "ERROR" && (
             <AnalysisError
+              code={errorCode}
               message={errorMessage || "Something went wrong while retrieving the file."}
+              requestId={errorRequestId}
               onRetry={handleRetry}
             />
           )}
