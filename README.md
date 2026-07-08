@@ -56,6 +56,20 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to view the 
 ├── app/                  # Next.js page routes, layouts, and global styles
 ├── components/           # React components
 │   └── analyzer/         # PDF-specific UI components (results, errors, skeleton)
+├── docs/                 # Documentation (ADRs, diagrams)
+│   └── decisions/        # Architecture Decision Records (ADRs)
 ├── lib/                  # Business logic (parsing, security checks, helpers)
 └── public/               # Static assets
 ```
+
+---
+
+## 🏛️ Architecture Decision Records (ADRs)
+
+To document intentional engineering decisions, we maintain Architecture Decision Records (ADRs) inside the [docs/decisions/](file:///d:/Programming/pdf-analyzer/docs/decisions/) folder:
+
+* **[ADR 001: Next.js Monolith Architecture](file:///d:/Programming/pdf-analyzer/docs/decisions/001-nextjs-monolith.md)**: Opting for a single Next.js codebase over divided backend/frontend repositories.
+* **[ADR 002: Layered SSRF Protection](file:///d:/Programming/pdf-analyzer/docs/decisions/002-ssrf-protection.md)**: Implementing deep hostname and redirect validation to block malicious network requests.
+* **[ADR 003: Caching Strategy](file:///d:/Programming/pdf-analyzer/docs/decisions/003-caching-strategy.md)**: Utilizing database caches to minimize Gemini API calls and boost load times.
+* **[ADR 004: Two-Tier Rate Limiting](file:///d:/Programming/pdf-analyzer/docs/decisions/004-rate-limiting.md)**: Separating general usage controls from AI analysis credit limits.
+* **[ADR 005: Gemini Response Schema](file:///d:/Programming/pdf-analyzer/docs/decisions/005-gemini-response-schema.md)**: Using native structured outputs from Gemini to guarantee schema alignment.

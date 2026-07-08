@@ -38,10 +38,18 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | null>(null);
-  const [recentAnalyses, setRecentAnalyses] = useState<string[]>([
-    "Future of LLMs",
-    "Climate Change Analysis Report 2024",
-  ]);
+  const [urlInput, setUrlInput] = useState("");
+  
+  interface HistoryItem {
+    url: string;
+    title: string;
+    accessed_at: string;
+  }
+  
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null);
   const [analysisRemaining, setAnalysisRemaining] = useState<number | null>(null);
   const [analysisMax, setAnalysisMax] = useState<number>(10);
@@ -60,8 +68,23 @@ export default function Home() {
     }
   };
 
+  const fetchHistory = async (page: number) => {
+    try {
+      const res = await fetch(`/api/history?page=${page}&pageSize=3`);
+      if (res.ok) {
+        const payload = await res.json();
+        setHistoryItems(payload.items || []);
+        setHistoryTotal(payload.totalCount || 0);
+        setHistoryPage(payload.page || 1);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch search history:", err);
+    }
+  };
+
   useEffect(() => {
     updateRateLimit();
+    fetchHistory(1);
   }, []);
 
 
@@ -109,10 +132,8 @@ export default function Home() {
 
       setAnalysisData(payload.data);
       setState("SUCCESS");
-
-      // Add to recent analyses
-      const filename = url.split("/").pop() || "Document Analysis";
-      setRecentAnalyses((prev) => [filename, ...prev.slice(0, 4)]);
+      setUrlInput(url);
+      fetchHistory(1);
     } catch (err: any) {
       console.error("Error in handleUrlSubmit:", err);
       setErrorMessage(err.message || "An unexpected error occurred while communicating with the server.");
@@ -172,7 +193,7 @@ export default function Home() {
           </p>
           
           <div className="w-full mt-4">
-            <UrlForm onSubmit={handleUrlSubmit} isLoading={state === "LOADING"} />
+            <UrlForm onSubmit={handleUrlSubmit} isLoading={state === "LOADING"} value={urlInput} onChange={setUrlInput} />
             
             {state === "IDLE" && (
               <p className="text-xs text-on-surface-variant/75 mt-3">
@@ -233,47 +254,80 @@ export default function Home() {
             Recent Analyses
           </h3>
           <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-[12px] overflow-hidden shadow-sm">
-            {recentAnalyses.map((title, idx) => (
-              <a
-                key={idx}
-                className="flex items-center justify-between p-4 border-b last:border-0 border-outline-variant/20 hover:bg-surface-container-low transition-colors group"
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setState("SUCCESS");
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="w-5 h-5 text-outline group-hover:text-primary transition-colors"
+            {historyItems.length === 0 ? (
+              <div className="p-6 text-center text-on-surface-variant font-body-md">
+                No recent analyses found.
+              </div>
+            ) : (
+              <>
+                {historyItems.map((item, idx) => (
+                  <a
+                    key={idx}
+                    className="flex items-center justify-between p-4 border-b last:border-0 border-outline-variant/20 hover:bg-surface-container-low transition-colors group"
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleUrlSubmit(item.url);
+                    }}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
-                    />
-                  </svg>
-                  <span className="font-body-md text-body-md text-on-surface font-medium">
-                    {title}
-                  </span>
-                </div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className="w-4 h-4 text-outline-variant"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                </svg>
-              </a>
-            ))}
+                    <div className="flex items-center gap-3">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                        stroke="currentColor"
+                        className="w-5 h-5 text-outline group-hover:text-primary transition-colors"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+                        />
+                      </svg>
+                      <span className="font-body-md text-body-md text-on-surface font-medium truncate max-w-lg sm:max-w-xl md:max-w-2xl">
+                        {item.title}
+                      </span>
+                    </div>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className="w-4 h-4 text-outline-variant"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                    </svg>
+                  </a>
+                ))}
+                
+                {/* Pagination Controls */}
+                {historyTotal > 3 && (
+                  <div className="flex justify-between items-center px-4 py-3 bg-surface-container-lowest border-t border-outline-variant/20">
+                    <span className="font-body-sm text-body-sm text-on-surface-variant">
+                      Showing {(historyPage - 1) * 3 + 1} - {Math.min(historyPage * 3, historyTotal)} of {historyTotal}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => fetchHistory(historyPage - 1)}
+                        disabled={historyPage === 1}
+                        className="px-3 py-1.5 rounded-lg border border-outline/30 text-body-sm hover:bg-surface-container-low transition-colors disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed font-medium text-on-surface"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => fetchHistory(historyPage + 1)}
+                        disabled={historyPage * 3 >= historyTotal}
+                        className="px-3 py-1.5 rounded-lg border border-outline/30 text-body-sm hover:bg-surface-container-low transition-colors disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer disabled:cursor-not-allowed font-medium text-on-surface"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </section>
       </main>

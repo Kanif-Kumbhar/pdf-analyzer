@@ -11,9 +11,12 @@ import { getCachedAnalysis, setCachedAnalysis } from "../../../lib/db/analysis-c
 import { transformUrl } from "../../../lib/url/transform-url";
 import { 
   checkGeneralRateLimit, 
-  checkAnalysisRateLimit, 
-  consumeAnalysisQuota 
+  reserveAnalysisQuota, 
+  refundAnalysisQuota,
+  getClientIp,
+  hashIp
 } from "../../../lib/security/rate-limit";
+import { recordSearchHistory } from "../../../lib/db/search-history";
 import { logger } from "../../../lib/observability/logger";
 
 function generateRequestId(): string {
@@ -25,6 +28,8 @@ function generateRequestId(): string {
 export async function POST(request: Request) {
   const startTime = Date.now();
   const requestId = generateRequestId();
+  let quotaReserved = false;
+  let geminiInvoked = false;
 
   logger.info({ requestId, stage: "request_received" });
 
@@ -62,6 +67,11 @@ export async function POST(request: Request) {
     // 5. Cache lookup — skip Gemini on a hit
     const cacheResult = await getCachedAnalysis(pdfUrl);
     if (cacheResult.hit) {
+      // Record search history for this client IP
+      const ip = getClientIp(request);
+      const ipHash = hashIp(ip);
+      await recordSearchHistory(ipHash, pdfUrl, cacheResult.data.title);
+
       logger.info({
         requestId,
         stage: "cache_hit",
@@ -85,8 +95,9 @@ export async function POST(request: Request) {
       durationMs: Date.now() - startTime,
     });
 
-    // 6. Check Analysis limit quota BEFORE fetching or analyzing (prevents unnecessary fetching if blocked)
-    await checkAnalysisRateLimit(request);
+    // 6. Atomically reserve quota slot (protects Gemini quota from concurrent request race conditions)
+    await reserveAnalysisQuota(request);
+    quotaReserved = true;
 
     // 7. Fetch PDF (with SSRF, size limits, and signature checks)
     logger.info({
@@ -106,6 +117,7 @@ export async function POST(request: Request) {
     let pdfMeta: Awaited<ReturnType<typeof extractPdfMetadata>>;
 
     try {
+      geminiInvoked = true;
       [rawAnalysis, pdfMeta] = await Promise.all([
         analyzePdfWithGemini(fetchResult.data),
         extractPdfMetadata(fetchResult.data),
@@ -113,9 +125,6 @@ export async function POST(request: Request) {
     } catch (geminiError: any) {
       throw AppError.analysisFailed(geminiError.message || "Failed to analyze the document content.");
     }
-
-    // Consume the analysis quota only after Gemini successfully completes
-    await consumeAnalysisQuota(request);
 
     const readingMinutes = estimateReadingMinutes(pdfMeta.wordCount, pdfMeta.pageCount);
 
@@ -149,6 +158,11 @@ export async function POST(request: Request) {
     // 10. Store result in cache
     await setCachedAnalysis(pdfUrl, finalValidation.data);
 
+    // Record search history for this client IP
+    const ip = getClientIp(request);
+    const ipHash = hashIp(ip);
+    await recordSearchHistory(ipHash, pdfUrl, finalValidation.data.title);
+
     logger.info({
       requestId,
       stage: "request_completed",
@@ -161,6 +175,14 @@ export async function POST(request: Request) {
       cached: false,
     });
   } catch (error) {
+    if (quotaReserved && !geminiInvoked) {
+      try {
+        await refundAnalysisQuota(request);
+      } catch (refundErr) {
+        console.error("[Refund] Failed to refund reserved quota:", refundErr);
+      }
+    }
+
     let errorCode = "INTERNAL_ERROR";
     if (error instanceof AppError) {
       errorCode = error.code;

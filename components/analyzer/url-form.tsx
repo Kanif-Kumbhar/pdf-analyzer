@@ -5,15 +5,15 @@ import React, { useState } from "react";
 interface UrlFormProps {
   onSubmit: (url: string) => void;
   isLoading: boolean;
+  value: string;
+  onChange: (val: string) => void;
 }
 
-export default function UrlForm({ onSubmit, isLoading }: UrlFormProps) {
-  const [url, setUrl] = useState("");
-
+export default function UrlForm({ onSubmit, isLoading, value, onChange }: UrlFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (url.trim()) {
-      onSubmit(url.trim());
+    if (value.trim()) {
+      onSubmit(value.trim());
     }
   };
 
@@ -21,8 +21,8 @@ export default function UrlForm({ onSubmit, isLoading }: UrlFormProps) {
     <form onSubmit={handleSubmit} className="flex w-full gap-3">
       <input
         type="text"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         placeholder="Paste PDF URL here"
         required
         disabled={isLoading}

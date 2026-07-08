@@ -61,9 +61,16 @@ export function mapErrorToResponse(error: unknown, requestId: string): NextRespo
     } else if (code === "ANALYSIS_TIMEOUT") {
       message = "Analysis timed out. Please retry.";
     } else if (code === "ANALYSIS_FAILED") {
-      message = isProduction 
-        ? "Analysis service is temporarily unavailable." 
-        : error.message;
+      const isOverload = message.includes("high demand") || message.includes("UNAVAILABLE") || message.includes("503") || message.includes("spikes in demand");
+      if (isOverload) {
+        code = "SERVICE_BUSY";
+        message = "The analysis service is currently experiencing high demand. Please try again later.";
+        status = 503;
+      } else {
+        message = isProduction 
+          ? "Analysis service is temporarily unavailable." 
+          : error.message;
+      }
     } else if (code === "SERVICE_CONFIGURATION_ERROR") {
       message = isProduction 
         ? "Analysis service is temporarily unavailable." 
@@ -76,12 +83,17 @@ export function mapErrorToResponse(error: unknown, requestId: string): NextRespo
   } else if (error instanceof Error) {
     const errorMsg = error.message;
     const isConfigError = errorMsg.includes("GEMINI_API_KEY") || errorMsg.includes("API_KEY") || errorMsg.includes("secret") || errorMsg.includes("token");
+    const isOverload = errorMsg.includes("high demand") || errorMsg.includes("UNAVAILABLE") || errorMsg.includes("503") || errorMsg.includes("spikes in demand");
 
     if (isConfigError) {
       code = "SERVICE_CONFIGURATION_ERROR";
       message = isProduction 
         ? "Analysis service is temporarily unavailable." 
         : errorMsg;
+    } else if (isOverload) {
+      code = "SERVICE_BUSY";
+      message = "The analysis service is currently experiencing high demand. Please try again later.";
+      status = 503;
     } else if (errorMsg.includes("timeout") || errorMsg.includes("deadline")) {
       code = "ANALYSIS_TIMEOUT";
       message = "Analysis timed out. Please retry.";

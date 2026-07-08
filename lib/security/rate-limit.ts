@@ -131,49 +131,54 @@ export async function checkGeneralRateLimit(request: Request): Promise<void> {
 }
 
 /**
- * 2. Checks if the client has analysis quota remaining before Gemini runs.
- * Does not increment the counter yet (in case download or other checks fail).
+ * 2. Atomically reserves an analysis quota slot.
+ * Returns normally if slot was reserved successfully, throws AppError if limit exceeded.
  */
-export async function checkAnalysisRateLimit(request: Request): Promise<void> {
+export async function reserveAnalysisQuota(request: Request): Promise<void> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);
   const supabase = getSupabaseClient();
-  const now = new Date();
 
   try {
-    const row = await getOrCreateLimitRow(supabase, ipHash, now);
+    const { data, error } = await supabase.rpc("reserve_analysis_quota", {
+      p_ip_hash: ipHash,
+      p_max_count: ANALYZE_MAX,
+      p_window_ms: ANALYZE_WINDOW_MS,
+    });
 
-    if (row.analysis_count >= ANALYZE_MAX) {
-      const windowStart = new Date(row.analysis_window_start);
+    if (error) throw error;
+
+    if (!data.success) {
+      const windowStart = new Date(data.analysis_window_start);
+      const now = new Date();
       const elapsed = now.getTime() - windowStart.getTime();
-      const retryAfter = Math.ceil((ANALYZE_WINDOW_MS - elapsed) / 1000);
+      const retryAfter = Math.max(1, Math.ceil((ANALYZE_WINDOW_MS - elapsed) / 1000));
       throw AppError.rateLimitExceeded(
         `AI Analysis limit exceeded. Try again in ${retryAfter} seconds.`
       );
     }
   } catch (err) {
     if (err instanceof AppError) throw err;
-    console.error("[Rate Limit] Error checking analysis limits:", err);
+    console.error("[Rate Limit] Error reserving analysis quota:", err);
+    throw AppError.internal("An error occurred while validating rate limits.");
   }
 }
 
 /**
- * 3. Consumes (increments) the analysis quota once we are about to call Gemini.
+ * 3. Refunds a reserved analysis quota slot (e.g. if fetch or validation fails before Gemini).
  */
-export async function consumeAnalysisQuota(request: Request): Promise<void> {
+export async function refundAnalysisQuota(request: Request): Promise<void> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);
   const supabase = getSupabaseClient();
-  const now = new Date();
 
   try {
-    const row = await getOrCreateLimitRow(supabase, ipHash, now);
-    await supabase
-      .from("rate_limits")
-      .update({ analysis_count: row.analysis_count + 1 })
-      .eq("ip_hash", ipHash);
+    const { error } = await supabase.rpc("refund_analysis_quota", {
+      p_ip_hash: ipHash,
+    });
+    if (error) throw error;
   } catch (err) {
-    console.error("[Rate Limit] Error consuming analysis quota:", err);
+    console.error("[Rate Limit] Error refunding analysis quota:", err);
   }
 }
 
