@@ -247,12 +247,12 @@ export default function Home() {
     <div className="bg-surface text-on-surface font-body-md min-h-screen flex flex-col">
       {/* TopNavBar */}
       <header className="bg-surface-container-lowest border-b border-outline-variant/30 sticky top-0 z-50 w-full">
-        <div className="max-w-[1280px] mx-auto h-16 px-6 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <span className="font-headline-md text-headline-md font-bold text-on-background">
+        <div className="max-w-[1280px] mx-auto h-16 px-4 sm:px-6 flex justify-between items-center">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="font-headline-md text-headline-md font-bold text-on-background text-lg sm:text-xl">
               PDF Analyzer
             </span>
-            <span className="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            <span className="bg-primary/10 text-primary text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full uppercase tracking-wider">
               Pro
             </span>
           </div>
@@ -264,7 +264,9 @@ export default function Home() {
                   : "bg-primary/5 text-primary border-primary/20"
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${analysisRemaining <= 2 ? "bg-error" : "bg-primary"}`}></span>
-                AI Analyses Remaining: {analysisRemaining} / {analysisMax}
+                <span className="hidden sm:inline">AI Analyses Remaining: </span>
+                <span className="sm:hidden">Remaining: </span>
+                {analysisRemaining} / {analysisMax}
               </span>
             )}
           </div>
@@ -470,20 +472,9 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="bg-surface-container-lowest border-t border-outline-variant/30 w-full mt-auto">
-        <div className="max-w-[1280px] mx-auto py-6 px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="font-body-md text-body-md text-on-surface-variant">
+        <div className="max-w-[1280px] mx-auto py-6 px-6 flex justify-center items-center">
+          <div className="font-body-md text-body-md text-on-surface-variant text-center">
             © 2026 PDF Analyzer Pro. Precision document intelligence.
-          </div>
-          <div className="flex gap-6 font-body-md text-body-md">
-            <a className="text-on-secondary-container hover:text-primary transition-colors" href="#">
-              Privacy Policy
-            </a>
-            <a className="text-on-secondary-container hover:text-primary transition-colors" href="#">
-              Terms of Service
-            </a>
-            <a className="text-on-secondary-container hover:text-primary transition-colors" href="#">
-              Contact Support
-            </a>
           </div>
         </div>
       </footer>

@@ -7,7 +7,7 @@ import { extractPdfMetadata } from "../../../lib/pdf/metadata";
 import { estimateReadingMinutes } from "../../../lib/analysis/reading-time";
 import { mapErrorToResponse } from "../../../lib/errors/error-response";
 import { AppError } from "../../../lib/errors/app-error";
-import { getCachedAnalysis, setCachedAnalysis } from "../../../lib/db/analysis-cache";
+import { getCachedAnalysis, setCachedAnalysis, getCachedAnalysisByHash, mapUrlToAnalysis, hashFileBytes } from "../../../lib/db/analysis-cache";
 import { transformUrl } from "../../../lib/url/transform-url";
 import { 
   checkGeneralRateLimit, 
@@ -95,11 +95,7 @@ export async function POST(request: Request) {
       durationMs: Date.now() - startTime,
     });
 
-    // 6. Atomically reserve quota slot (protects Gemini quota from concurrent request race conditions)
-    await reserveAnalysisQuota(request);
-    quotaReserved = true;
-
-    // 7. Fetch PDF (with SSRF, size limits, and signature checks)
+    // 6. Fetch PDF (with SSRF, size limits, and signature checks)
     logger.info({
       requestId,
       stage: "pdf_fetch_started",
@@ -112,6 +108,41 @@ export async function POST(request: Request) {
       durationMs: Date.now() - startTime,
       metadata: { byteSize: fetchResult.size },
     });
+
+    // 7. Calculate PDF content hash and check L2 (Content) cache
+    const contentHash = hashFileBytes(fetchResult.data);
+    const l2CacheResult = await getCachedAnalysisByHash(contentHash);
+
+    if (l2CacheResult.hit) {
+      // L2 Cache Hit — Map this URL to the existing analysis ID so future lookups hit L1
+      await mapUrlToAnalysis(pdfUrl, contentHash);
+
+      // Record in search history for client IP
+      const ip = getClientIp(request);
+      const ipHash = hashIp(ip);
+      await recordSearchHistory(ipHash, pdfUrl, l2CacheResult.data.title);
+
+      logger.info({
+        requestId,
+        stage: "cache_hit",
+        durationMs: Date.now() - startTime,
+        metadata: { level: "L2" },
+      });
+      logger.info({
+        requestId,
+        stage: "request_completed",
+        durationMs: Date.now() - startTime,
+        metadata: { cached: true, cacheLevel: "L2" },
+      });
+      return NextResponse.json({
+        data: l2CacheResult.data,
+        cached: true,
+      });
+    }
+
+    // 8. Atomically reserve quota slot (only on absolute cache miss, before invoking Gemini)
+    await reserveAnalysisQuota(request);
+    quotaReserved = true;
 
     let rawAnalysis: any;
     let pdfMeta: Awaited<ReturnType<typeof extractPdfMetadata>>;
@@ -155,8 +186,8 @@ export async function POST(request: Request) {
       throw AppError.internal("The analysis model generated data that does not conform to the expected schema.");
     }
 
-    // 10. Store result in cache
-    await setCachedAnalysis(pdfUrl, finalValidation.data);
+    // 10. Store result in both L1 and L2 cache
+    await setCachedAnalysis(pdfUrl, contentHash, finalValidation.data);
 
     // Record search history for this client IP
     const ip = getClientIp(request);
