@@ -151,6 +151,15 @@ export default function Home() {
   };
 
   const handleFileUpload = async (file: File) => {
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+    if (file.size > MAX_FILE_SIZE) {
+      setErrorMessage("This PDF exceeds the maximum supported size (10 MB).");
+      setErrorCode("PDF_TOO_LARGE");
+      setErrorRequestId(null);
+      setState("ERROR");
+      return;
+    }
+
     setState("LOADING");
     setErrorMessage("");
     setErrorCode(null);
