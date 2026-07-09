@@ -2,11 +2,6 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
 
-/**
- * Returns a lazily-initialized Supabase client authenticated as service_role.
- * This client has full bypass of RLS and must NEVER be used client-side.
- * It is safe only in server-side Node.js API routes.
- */
 export function getSupabaseClient(): SupabaseClient {
   if (client) return client;
 
@@ -22,7 +17,6 @@ export function getSupabaseClient(): SupabaseClient {
 
   client = createClient(url, key, {
     auth: {
-      // Disable automatic session persistence — this is a server-side client
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,

@@ -14,7 +14,7 @@ export default function DropZone({ onFileSelect, isLoading }: DropZoneProps) {
 
   const handleFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-      return; // silently ignore — validation happens on server with better error messages
+      return;
     }
     setSelectedFile(file);
     onFileSelect(file);

@@ -2,46 +2,32 @@ import crypto from "crypto";
 import { getSupabaseClient } from "./supabase";
 import type { AnalysisData } from "../../components/analyzer/analysis-result";
 
-/** Cache TTL in milliseconds (7 days) */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * Computes the SHA-256 hex digest of a string or buffer.
- */
 export function sha256(input: string | Buffer): string {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-/**
- * Normalizes a validated URL to a canonical form for consistent cache key generation.
- * Lowercases the scheme and hostname, strips trailing slashes from the path.
- */
 export function normalizeUrl(url: string): string {
   const parsed = new URL(url);
-  // Lowercase scheme and host
+
   parsed.protocol = parsed.protocol.toLowerCase();
   parsed.hostname = parsed.hostname.toLowerCase();
-  // Strip trailing slash from path (unless it's just "/")
+
   if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) {
     parsed.pathname = parsed.pathname.slice(0, -1);
   }
-  // Sort query parameters alphabetically for consistency
+
   parsed.searchParams.sort();
   return parsed.toString();
 }
 
-/**
- * Computes the SHA-256 hex digest of the normalized URL.
- * Used as the primary key for L1 cache lookups.
- */
+// Hash normalized URL to generate L1 cache key.
 export function hashUrl(normalizedUrl: string): string {
   return sha256(normalizedUrl);
 }
 
-/**
- * Computes the SHA-256 hex digest of raw file bytes.
- * Used as the L2 cache key for PDF contents.
- */
+// Hash raw file bytes to generate L2 cache key.
 export function hashFileBytes(buffer: Buffer): string {
   return sha256(buffer);
 }
@@ -50,13 +36,7 @@ export type CacheLookupResult =
   | { hit: true; data: AnalysisData }
   | { hit: false };
 
-/**
- * Looks up a cached analysis result by URL (L1 Cache lookup).
- * Joins `document_urls` and `document_analyses` to retrieve the cached result.
- *
- * @param url The original, validated URL string.
- * @returns The cached result if found and fresh, or `{ hit: false }`.
- */
+// Look up cached analysis result by URL (L1 Cache lookup).
 export async function getCachedAnalysis(url: string): Promise<CacheLookupResult> {
   const normalized = normalizeUrl(url);
   const urlHash = hashUrl(normalized);
@@ -93,7 +73,8 @@ export async function getCachedAnalysis(url: string): Promise<CacheLookupResult>
     return { hit: false };
   }
 
-  const analysis = data.document_analyses as any;
+  const analysisArray = data.document_analyses as unknown as { result: unknown }[] | null;
+  const analysis = analysisArray && analysisArray.length > 0 ? analysisArray[0] : null;
   if (!analysis || !analysis.result) {
     return { hit: false };
   }
@@ -102,11 +83,7 @@ export async function getCachedAnalysis(url: string): Promise<CacheLookupResult>
   return { hit: true, data: analysis.result as AnalysisData };
 }
 
-/**
- * Looks up a cached analysis result by the PDF content hash (L2 Cache lookup).
- *
- * @param contentHash The SHA-256 hex hash of the PDF file bytes.
- */
+// Look up cached analysis result by PDF content hash (L2 Cache lookup).
 export async function getCachedAnalysisByHash(contentHash: string): Promise<CacheLookupResult> {
   const supabase = getSupabaseClient();
 
@@ -138,13 +115,7 @@ export async function getCachedAnalysisByHash(contentHash: string): Promise<Cach
   return { hit: true, data: data.result as AnalysisData };
 }
 
-/**
- * Stores a new analysis result in the L2 cache and maps the source URL to it (L1).
- *
- * @param url The original validated URL string.
- * @param contentHash The SHA-256 hex hash of the PDF file bytes.
- * @param result The validated AnalysisData to store.
- */
+// Store analysis result in L2 cache and map source URL to it in L1.
 export async function setCachedAnalysis(
   url: string,
   contentHash: string,
@@ -193,12 +164,7 @@ export async function setCachedAnalysis(
   }
 }
 
-/**
- * Maps a new URL to an existing analysis record in the L2 cache.
- *
- * @param url The new validated URL string.
- * @param contentHash The SHA-256 hex hash of the PDF file bytes.
- */
+// Map a new URL to an existing analysis record in L2 cache.
 export async function mapUrlToAnalysis(url: string, contentHash: string): Promise<void> {
   const normalized = normalizeUrl(url);
   const urlHash = hashUrl(normalized);
@@ -235,14 +201,7 @@ export async function mapUrlToAnalysis(url: string, contentHash: string): Promis
   }
 }
 
-/**
- * Stores an analysis result from a file upload in the L2 cache.
- * Note: Uploads do not have a standard public URL, so they don't get an L1 mapping.
- *
- * @param contentHash The SHA-256 hex hash of the file bytes.
- * @param filename The original filename.
- * @param result The validated AnalysisData to store.
- */
+// Store upload analysis result in L2 cache (uploads bypass L1 mapping).
 export async function setCachedAnalysisByHash(
   contentHash: string,
   filename: string,

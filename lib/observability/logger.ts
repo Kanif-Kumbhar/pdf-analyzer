@@ -23,13 +23,10 @@ interface LogPayload {
   stage: LogStage;
   durationMs?: number;
   errorCode?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * Structured Logger to output standardized request execution logs to console stdout.
- * Formats data cleanly while preventing security exposure of keys, secrets, or content.
- */
+// Structured Logger for standardized stdout execution logs without exposing secrets.
 export const logger = {
   info(payload: LogPayload) {
     const output = {

@@ -6,10 +6,7 @@ export interface HistoryItem {
   accessed_at: string;
 }
 
-/**
- * Record a search history entry for the given IP hash.
- * Uses upsert (onConflict: ip_hash, url) to update accessed_at and title.
- */
+// Record a search history entry for a given IP hash.
 export async function recordSearchHistory(ipHash: string, url: string, title: string): Promise<void> {
   const supabase = getSupabaseClient();
   const now = new Date().toISOString();
@@ -29,9 +26,7 @@ export async function recordSearchHistory(ipHash: string, url: string, title: st
   }
 }
 
-/**
- * Retrieves paginated search history for the given IP hash.
- */
+// Retrieve paginated search history for a given IP hash.
 export async function getSearchHistory(
   ipHash: string,
   page: number = 1,

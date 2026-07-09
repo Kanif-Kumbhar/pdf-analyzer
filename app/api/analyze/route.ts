@@ -38,10 +38,10 @@ export async function POST(request: Request) {
     await checkGeneralRateLimit(request);
 
     // 2. Parse JSON payload
-    let body: any;
+    let body: unknown;
     try {
-      body = await request.clone().json(); // clone so it can be re-read if needed, though not needed here
-    } catch (err) {
+      body = await request.clone().json();
+    } catch {
       throw AppError.invalidRequest("Malformed JSON payload in request body.");
     }
 
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
     await reserveAnalysisQuota(request);
     quotaReserved = true;
 
-    let rawAnalysis: any;
+    let rawAnalysis: unknown;
     let pdfMeta: Awaited<ReturnType<typeof extractPdfMetadata>>;
 
     try {
@@ -153,8 +153,9 @@ export async function POST(request: Request) {
         analyzePdfWithGemini(fetchResult.data),
         extractPdfMetadata(fetchResult.data),
       ]);
-    } catch (geminiError: any) {
-      throw AppError.analysisFailed(geminiError.message || "Failed to analyze the document content.");
+    } catch (geminiError: unknown) {
+      const msg = geminiError instanceof Error ? geminiError.message : "Failed to analyze the document content.";
+      throw AppError.analysisFailed(msg);
     }
 
     const readingMinutes = estimateReadingMinutes(pdfMeta.wordCount, pdfMeta.pageCount);
@@ -171,11 +172,18 @@ export async function POST(request: Request) {
     });
 
     // 9. Merge deterministic metadata over Gemini's output, then validate schema
+    const rawObj = rawAnalysis as Record<string, unknown> | null;
+    const rawMeta = rawObj && typeof rawObj.metadata === "object" && rawObj.metadata !== null
+      ? (rawObj.metadata as Record<string, unknown>)
+      : null;
+    const rawPageCount = rawMeta && typeof rawMeta.pageCount === "number" ? rawMeta.pageCount : 0;
+    const rawReadingMinutes = rawMeta && typeof rawMeta.estimatedReadingMinutes === "number" ? rawMeta.estimatedReadingMinutes : 0;
+
     const analysisWithMetadata = {
-      ...rawAnalysis,
+      ...(rawObj || {}),
       metadata: {
-        pageCount: pdfMeta.pageCount ?? rawAnalysis?.metadata?.pageCount ?? 0,
-        estimatedReadingMinutes: readingMinutes ?? rawAnalysis?.metadata?.estimatedReadingMinutes ?? 0,
+        pageCount: pdfMeta.pageCount ?? rawPageCount,
+        estimatedReadingMinutes: readingMinutes ?? rawReadingMinutes,
         analyzedAt: new Date().toISOString(),
       },
     };

@@ -1,6 +1,4 @@
-/**
- * Unified application error class representing both client-side and server-side errors.
- */
+// Unified application error class representing both client-side and server-side errors.
 export class AppError extends Error {
   constructor(
     public code: string,
@@ -23,7 +21,7 @@ export class AppError extends Error {
   }
 
   static unsafeUrl(message: string) {
-    return new AppError("UNSAFE_URL", 400, message); // returning 400 for consistency on bad requests
+    return new AppError("UNSAFE_URL", 400, message);
   }
 
   static pdfNotFound(message: string) {

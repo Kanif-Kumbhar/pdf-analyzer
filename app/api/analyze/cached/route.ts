@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCachedAnalysisByHash } from "../../../../lib/db/analysis-cache";
 
-/**
- * GET /api/analyze/cached?hash=<sha256>
- *
- * Returns a previously cached analysis result by its content hash.
- * Used by the history panel to replay uploaded-file results without
- * requiring the user to re-upload the file.
- */
+// GET /api/analyze/cached?hash=<sha256> — retrieve cached analysis by file content hash.
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const hash = searchParams.get("hash");

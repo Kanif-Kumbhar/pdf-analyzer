@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-/**
- * Zod schema defining the structure of the model's analysis output
- * and the success response data object.
- */
+// Zod schema for structured PDF analysis results.
 export const pdfAnalysisSchema = z.object({
   documentType: z.string().min(1, "Document type is required"),
   title: z.string().min(1, "Title is required"),
@@ -24,9 +21,7 @@ export const pdfAnalysisSchema = z.object({
 
 export type PdfAnalysis = z.infer<typeof pdfAnalysisSchema>;
 
-/**
- * Zod schema defining the success API response structure.
- */
+// Zod schema for successful API response.
 export const analysisSuccessResponseSchema = z.object({
   data: pdfAnalysisSchema,
 });

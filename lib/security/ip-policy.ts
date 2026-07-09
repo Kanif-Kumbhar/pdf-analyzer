@@ -1,15 +1,13 @@
 import net from "net";
 
-/**
- * Validates if an IPv4 address is safe (not loopback, private range, link-local, multicast, or unspecified).
- */
+// Validate if an IPv4 address is safe (not loopback, private, link-local, multicast, or reserved).
 export function isSafeIPv4(ip: string): boolean {
   const parts = ip.split(".").map(Number);
   if (parts.length !== 4 || parts.some(isNaN) || parts.some((p) => p < 0 || p > 255)) {
     return false;
   }
 
-  const [b0, b1, b2, b3] = parts;
+  const [b0, b1] = parts;
 
   // 0.0.0.0/8 (Current network / Broadcast placeholder)
   if (b0 === 0) return false;
@@ -38,16 +36,13 @@ export function isSafeIPv4(ip: string): boolean {
   return true;
 }
 
-/**
- * Expands and parses an IPv6 address string into an array of 8 16-bit integers.
- * Returns null if the format is invalid.
- */
+// Parse an IPv6 address string into an array of 8 16-bit integers.
 function parseIPv6(ip: string): number[] | null {
   const parts = ip.split("::");
   if (parts.length > 2) return null;
 
   let left = parts[0] ? parts[0].split(":") : [];
-  let right = parts[1] ? parts[1].split(":") : [];
+  const right = parts[1] ? parts[1].split(":") : [];
 
   // If there's an IPv4 address at the end of the IPv6 (e.g. ::ffff:192.168.1.1)
   const lastPart = right.length > 0 ? right[right.length - 1] : left[left.length - 1];
@@ -87,9 +82,7 @@ function parseIPv6(ip: string): number[] | null {
   }
 }
 
-/**
- * Validates if an IPv6 address is safe (not loopback, private range, link-local, multicast, or unspecified).
- */
+// Validate if an IPv6 address is safe (not loopback, private, link-local, multicast, or unspecified).
 export function isSafeIPv6(ip: string): boolean {
   const blocks = parseIPv6(ip);
   if (!blocks) return false;
@@ -136,9 +129,7 @@ export function isSafeIPv6(ip: string): boolean {
   return true;
 }
 
-/**
- * Validates if any generic IP address string (IPv4 or IPv6) is safe.
- */
+// Check if a generic IP address (IPv4 or IPv6) is safe.
 export function isSafeIp(ip: string): boolean {
   const ipType = net.isIP(ip);
   if (ipType === 4) {

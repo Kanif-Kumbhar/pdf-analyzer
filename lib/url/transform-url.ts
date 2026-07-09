@@ -1,20 +1,6 @@
-/**
- * Transforms known file-hosting share/viewer URLs into direct downloadable URLs.
- * This runs before SSRF checks, cache lookup, and fetch — so all downstream
- * logic always sees a clean, fetchable URL.
- *
- * Currently supported transformations:
- *   - Google Drive viewer/share → direct download
- */
+// Transform share/viewer URLs (e.g., Google Drive) into direct download links before validation/fetch.
 
-/**
- * Google Drive viewer/share URL pattern.
- * Matches:
- *   https://drive.google.com/file/d/FILE_ID/view
- *   https://drive.google.com/file/d/FILE_ID/view?usp=sharing
- *   https://drive.google.com/file/d/FILE_ID/view?usp=drive_link
- *   https://drive.google.com/open?id=FILE_ID
- */
+// Google Drive viewer/share URL patterns: /file/d/FILE_ID/... or /open?id=FILE_ID
 const GOOGLE_DRIVE_FILE_PATTERN = /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/;
 const GOOGLE_DRIVE_OPEN_PATTERN = /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/;
 
@@ -36,13 +22,7 @@ function transformGoogleDriveUrl(url: string): string | null {
   return null;
 }
 
-/**
- * Attempts to transform a user-supplied URL into a directly fetchable PDF URL.
- * Returns the transformed URL if a known pattern was matched, or the original URL unchanged.
- *
- * @param url The raw URL provided by the user (already passed schema validation).
- * @returns A tuple of [finalUrl, wasTransformed].
- */
+// Transform user URL to direct fetchable URL if it matches a known hosting pattern.
 export function transformUrl(url: string): { url: string; transformed: boolean; source?: string } {
   const googleDrive = transformGoogleDriveUrl(url);
   if (googleDrive) {

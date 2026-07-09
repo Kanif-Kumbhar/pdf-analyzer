@@ -157,27 +157,6 @@ export default function AnalysisError({ code, message, requestId, onRetry }: Ana
             Try Again
           </button>
         )}
-        <a
-          href="#"
-          onClick={(e) => e.preventDefault()}
-          className="inline-flex items-center gap-2 font-label-md text-sm font-bold text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all duration-200 py-3 px-6 rounded-xl"
-        >
-          Check API Status
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            stroke="currentColor"
-            className="w-4 h-4"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M13.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM13.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM13.5 21a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"
-            />
-          </svg>
-        </a>
       </div>
     </div>
   );

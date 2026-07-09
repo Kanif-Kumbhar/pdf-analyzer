@@ -5,22 +5,12 @@ const MAX_FILE_SIZE = process.env.MAX_FILE_SIZE
   : 10 * 1024 * 1024; // 10 MB default
 
 export interface ValidatedUpload {
-  /** Raw PDF bytes as a Buffer. */
-  data: Buffer;
-  /** Original filename from the upload. */
-  filename: string;
-  /** Byte size of the file. */
-  size: number;
+  data: Buffer; // Raw PDF bytes as a Buffer
+  filename: string; // Original filename from the upload
+  size: number; // Byte size of the file
 }
 
-/**
- * Extracts, size-checks, and magic-byte-validates a PDF uploaded via multipart/form-data.
- * Mirrors the same checks done in fetchPdf() for URL-based ingestion.
- *
- * @param request The incoming multipart Request.
- * @returns A ValidatedUpload with the raw bytes, original filename, and byte size.
- * @throws AppError for invalid, oversized, or non-PDF files.
- */
+// Extract, size-check, and validate an uploaded PDF file from multipart/form-data.
 export async function validateUploadedPdf(request: Request): Promise<ValidatedUpload> {
   let formData: FormData;
   try {

@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   try {
     const status = await getRateLimitStatus(request);
     return NextResponse.json(status);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         requestRemaining: 100,

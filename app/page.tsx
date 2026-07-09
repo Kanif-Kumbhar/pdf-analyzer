@@ -85,6 +85,7 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     updateRateLimit();
     fetchHistory(1);
   }, []);
@@ -136,9 +137,10 @@ export default function Home() {
       setState("SUCCESS");
       setUrlInput(url);
       fetchHistory(1);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error in handleUrlSubmit:", err);
-      setErrorMessage(err.message || "An unexpected error occurred while communicating with the server.");
+      const msg = err instanceof Error ? err.message : "An unexpected error occurred while communicating with the server.";
+      setErrorMessage(msg);
       setErrorCode("CLIENT_FETCH_ERROR");
       setErrorRequestId(null);
       setState("ERROR");
@@ -179,9 +181,10 @@ export default function Home() {
       setAnalysisData(payload.data);
       setState("SUCCESS");
       fetchHistory(1);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error in handleFileUpload:", err);
-      setErrorMessage(err.message || "An unexpected error occurred.");
+      const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
+      setErrorMessage(msg);
       setErrorCode("CLIENT_FETCH_ERROR");
       setErrorRequestId(null);
       setState("ERROR");
@@ -197,7 +200,7 @@ export default function Home() {
     setErrorRequestId(null);
   };
 
-  /** Loads a cached analysis result by content hash (for uploaded-file history items). */
+  // Load cached analysis result by content hash (for uploaded-file history items).
   const handleCachedResult = async (hash: string) => {
     setState("LOADING");
     setErrorMessage("");
@@ -219,19 +222,16 @@ export default function Home() {
 
       setAnalysisData(payload.data);
       setState("SUCCESS");
-    } catch (err: any) {
-      setErrorMessage(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "An unexpected error occurred.";
+      setErrorMessage(msg);
       setErrorCode("CLIENT_FETCH_ERROR");
       setErrorRequestId(null);
       setState("ERROR");
     }
   };
 
-  /**
-   * Handles a click on a history item.
-   * Upload items (url starts with "upload::") fetch from the cache by hash.
-   * URL items go through the normal URL submit flow.
-   */
+  // Handle click on history item. Uploads fetch from cache, URLs go to submit flow.
   const handleHistoryItemClick = (url: string) => {
     if (url.startsWith("upload::")) {
       const hash = url.replace("upload::", "");

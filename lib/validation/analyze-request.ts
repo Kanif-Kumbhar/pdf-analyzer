@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-/**
- * Zod schema defining the structure of the incoming browser request.
- */
+// Zod schema for incoming browser requests.
 export const analyzeRequestSchema = z.object({
   pdfUrl: z
     .string({
@@ -24,9 +22,7 @@ export const analyzeRequestSchema = z.object({
 
 export type AnalyzeRequest = z.infer<typeof analyzeRequestSchema>;
 
-/**
- * Zod schema defining the failure API response structure.
- */
+// Zod schema for error API responses.
 export const analyzeFailureResponseSchema = z.object({
   error: z.object({
     code: z.string().min(1, "Error code is required"),

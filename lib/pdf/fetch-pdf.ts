@@ -6,14 +6,7 @@ export interface FetchPdfResult {
   size: number;
 }
 
-/**
- * Fetches a PDF file from a given URL with SSRF protections.
- * Performs URL parsing, protocol check, DNS validation, manual redirect loop checks,
- * content size restrictions, and PDF format verification.
- *
- * @param url The public HTTP or HTTPS URL pointing to the PDF document.
- * @param timeoutMs Request timeout limit in milliseconds. Defaults to 10 seconds.
- */
+// Fetch PDF from URL securely, checking for SSRF, size limits, and valid signatures.
 export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<FetchPdfResult> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -124,7 +117,7 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
     let checkedSignature = false;
 
     // Read the stream chunk by chunk
-    for await (const chunk of response.body as any) {
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
       totalBytes += chunk.byteLength;
       if (totalBytes > maxFileSize) {
         throw AppError.pdfTooLarge("File size limit exceeded (maximum is 10MB).");
@@ -158,9 +151,9 @@ export async function fetchPdf(url: string, timeoutMs: number = 10000): Promise<
       data: buffer,
       size: buffer.byteLength,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     clearTimeout(id);
-    if (error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError") {
       throw AppError.pdfFetchTimeout("Request timed out while fetching the PDF document.");
     }
     throw error;

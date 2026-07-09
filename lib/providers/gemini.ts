@@ -65,9 +65,7 @@ const geminiAnalysisResponseSchema = {
 
 let clientInstance: GoogleGenAI | null = null;
 
-/**
- * Lazy initialization helper for Google Gen AI client.
- */
+// Lazy initialization helper for Google Gen AI client.
 function getGenAIClient(): GoogleGenAI {
   if (!clientInstance) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -81,13 +79,8 @@ function getGenAIClient(): GoogleGenAI {
   return clientInstance;
 }
 
-/**
- * Analyzes PDF content using Gemini 2.5 Flash and returns structured JSON analysis metadata.
- *
- * @param pdfBuffer The file buffer containing the raw PDF document bytes.
- * @returns Parsed structured output matching the core fields.
- */
-export async function analyzePdfWithGemini(pdfBuffer: Buffer): Promise<any> {
+// Analyze PDF content using Gemini 2.5 Flash with structured JSON output.
+export async function analyzePdfWithGemini(pdfBuffer: Buffer): Promise<unknown> {
   const ai = getGenAIClient();
 
   const response = await ai.models.generateContent({
@@ -103,7 +96,7 @@ export async function analyzePdfWithGemini(pdfBuffer: Buffer): Promise<any> {
     ],
     config: {
       responseMimeType: "application/json",
-      responseSchema: geminiAnalysisResponseSchema as any,
+      responseSchema: geminiAnalysisResponseSchema as unknown as Record<string, unknown>,
     },
   });
 
@@ -114,7 +107,8 @@ export async function analyzePdfWithGemini(pdfBuffer: Buffer): Promise<any> {
 
   try {
     return JSON.parse(text);
-  } catch (err: any) {
-    throw new Error(`Failed to parse structured JSON from Gemini response: ${err.message}. Raw output: ${text}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse structured JSON from Gemini response: ${msg}. Raw output: ${text}`);
   }
 }

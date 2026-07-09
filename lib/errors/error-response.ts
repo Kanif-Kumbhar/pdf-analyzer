@@ -2,16 +2,7 @@ import { NextResponse } from "next/server";
 import { AppError } from "./app-error";
 import { ZodError } from "zod";
 
-/**
- * Centrally maps errors (AppError, ZodError, or generic Error) to formatted JSON NextResponses.
- * Implements a 2-layer error architecture:
- * Layer 1 (Backend): Logs detailed error reasons and stack traces to the server console.
- * Layer 2 (Frontend): Returns user-friendly, masked JSON responses to prevent sensitive information leakage.
- *
- * @param error The thrown error object.
- * @param requestId Unique identifier for request tracing.
- * @returns NextResponse formatted to client specifications.
- */
+// Map backend errors centrally to masked, user-friendly frontend JSON responses.
 export function mapErrorToResponse(error: unknown, requestId: string): NextResponse {
   // --- LAYER 1: Backend Detailed Logging ---
   console.error(`\n[ERROR] RequestId: ${requestId}`);

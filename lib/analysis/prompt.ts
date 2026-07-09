@@ -1,6 +1,3 @@
-/**
- * Prompt instructing Gemini how to analyze the PDF and extract the required metadata fields.
- */
 export const PDF_ANALYSIS_PROMPT = `
 You are an expert document analyzer. Analyze the attached PDF document and extract structured insights.
 

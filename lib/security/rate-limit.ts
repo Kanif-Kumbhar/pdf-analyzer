@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getSupabaseClient } from "../db/supabase";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../errors/app-error";
 
 // Configurable constants with safe defaults
@@ -45,10 +46,8 @@ export interface LimitStatus {
   analysisResetSeconds: number;
 }
 
-/**
- * Normalizes user limits row. Resets windows if expired.
- */
-async function getOrCreateLimitRow(supabase: any, ipHash: string, now: Date) {
+// Normalize user limits row and reset windows if expired.
+async function getOrCreateLimitRow(supabase: SupabaseClient, ipHash: string, now: Date) {
   const { data: row, error } = await supabase
     .from("rate_limits")
     .select("*")
@@ -70,7 +69,7 @@ async function getOrCreateLimitRow(supabase: any, ipHash: string, now: Date) {
     return newRow;
   }
 
-  let updatePayload: Record<string, any> = {};
+  const updatePayload: Record<string, number | string> = {};
 
   // Check general request window
   const reqStart = new Date(row.request_window_start);
@@ -97,10 +96,7 @@ async function getOrCreateLimitRow(supabase: any, ipHash: string, now: Date) {
   return row;
 }
 
-/**
- * 1. Checks and increments general API request rate limit.
- * Runs at the very start of every API call (including cache hits).
- */
+// Check and increment general API request rate limit.
 export async function checkGeneralRateLimit(request: Request): Promise<void> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);
@@ -130,10 +126,7 @@ export async function checkGeneralRateLimit(request: Request): Promise<void> {
   }
 }
 
-/**
- * 2. Atomically reserves an analysis quota slot.
- * Returns normally if slot was reserved successfully, throws AppError if limit exceeded.
- */
+// Atomically reserve an analysis quota slot.
 export async function reserveAnalysisQuota(request: Request): Promise<void> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);
@@ -164,9 +157,7 @@ export async function reserveAnalysisQuota(request: Request): Promise<void> {
   }
 }
 
-/**
- * 3. Refunds a reserved analysis quota slot (e.g. if fetch or validation fails before Gemini).
- */
+// Refund a reserved analysis quota slot (e.g. if fetch/validation fails).
 export async function refundAnalysisQuota(request: Request): Promise<void> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);
@@ -182,9 +173,7 @@ export async function refundAnalysisQuota(request: Request): Promise<void> {
   }
 }
 
-/**
- * Exposes current limit status for the frontend UI.
- */
+// Expose current rate limit status for the UI.
 export async function getRateLimitStatus(request: Request): Promise<LimitStatus> {
   const ip = getClientIp(request);
   const ipHash = hashIp(ip);

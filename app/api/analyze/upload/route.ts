@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     quotaReserved = true;
 
     // 5. Gemini + metadata extraction in parallel (same as URL flow)
-    let rawAnalysis: any;
+    let rawAnalysis: unknown;
     let pdfMeta: Awaited<ReturnType<typeof extractPdfMetadata>>;
 
     try {
@@ -84,10 +84,9 @@ export async function POST(request: Request) {
         analyzePdfWithGemini(pdfBuffer),
         extractPdfMetadata(pdfBuffer),
       ]);
-    } catch (geminiError: any) {
-      throw AppError.analysisFailed(
-        geminiError.message || "Failed to analyze the document content."
-      );
+    } catch (geminiError: unknown) {
+      const msg = geminiError instanceof Error ? geminiError.message : "Failed to analyze the document content.";
+      throw AppError.analysisFailed(msg);
     }
 
     const readingMinutes = estimateReadingMinutes(pdfMeta.wordCount, pdfMeta.pageCount);
@@ -100,12 +99,18 @@ export async function POST(request: Request) {
     });
 
     // 6. Validate Gemini output with Zod schema
+    const rawObj = rawAnalysis as Record<string, unknown> | null;
+    const rawMeta = rawObj && typeof rawObj.metadata === "object" && rawObj.metadata !== null
+      ? (rawObj.metadata as Record<string, unknown>)
+      : null;
+    const rawPageCount = rawMeta && typeof rawMeta.pageCount === "number" ? rawMeta.pageCount : 0;
+    const rawReadingMinutes = rawMeta && typeof rawMeta.estimatedReadingMinutes === "number" ? rawMeta.estimatedReadingMinutes : 0;
+
     const analysisWithMetadata = {
-      ...rawAnalysis,
+      ...(rawObj || {}),
       metadata: {
-        pageCount: pdfMeta.pageCount ?? rawAnalysis?.metadata?.pageCount ?? 0,
-        estimatedReadingMinutes:
-          readingMinutes ?? rawAnalysis?.metadata?.estimatedReadingMinutes ?? 0,
+        pageCount: pdfMeta.pageCount ?? rawPageCount,
+        estimatedReadingMinutes: readingMinutes ?? rawReadingMinutes,
         analyzedAt: new Date().toISOString(),
       },
     };
